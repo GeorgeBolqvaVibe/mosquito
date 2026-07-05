@@ -91,6 +91,80 @@ def calculate_z_score(info):
         return round(1.2*X1 + 1.4*X2 + 3.3*X3 + 0.6*X4 + 0.99*X5, 2)
     except: return 0
 
+def fmt_financial_val(val):
+    if val is None or isinstance(val, str) or pd.isna(val): return 'N/A'
+    try:
+        val_float = float(val)
+        abs_val = abs(val_float)
+        sign = "-" if val_float < 0 else ""
+        if abs_val >= 1_000_000_000:
+            return f"{sign}${abs_val / 1_000_000_000:.2f}B"
+        elif abs_val >= 1_000_000:
+            return f"{sign}${abs_val / 1_000_000:.2f}M"
+        elif abs_val >= 1_000:
+            return f"{sign}${abs_val / 1_000:.2f}K"
+        else:
+            return f"{sign}${abs_val:.2f}"
+    except:
+        return 'N/A'
+
+def fetch_multi_year_financial_matrix(stock):
+    try:
+        fin = stock.financials
+        bs = stock.balance_sheet
+        cf = stock.cashflow
+        
+        if (fin is None or fin.empty) and (bs is None or bs.empty) and (cf is None or cf.empty):
+            return None
+            
+        rows_to_extract = {
+            "Revenue": ("Total Revenue", fin),
+            "Gross Profit": ("Gross Profit", fin),
+            "Total Cash": ("Cash Cash Equivalents And Short Term Investments", bs),
+            "Total Debt": ("Total Debt", bs),
+            "Free Cash Flow": ("Free Cash Flow", cf)
+        }
+        
+        dates = []
+        for df in [fin, bs, cf]:
+            if df is not None and not df.empty:
+                dates.extend(df.columns.tolist())
+                
+        if not dates:
+            return None
+            
+        unique_dates = sorted(list(set(dates)), reverse=True)
+        unique_dates = unique_dates[:4] # Keep up to 4 years
+        
+        data = {}
+        for label, (row_name, df) in rows_to_extract.items():
+            row_vals = {}
+            for d in unique_dates:
+                val = None
+                if df is not None and not df.empty:
+                    matching_cols = [c for c in df.columns if c == d]
+                    if matching_cols:
+                        col = matching_cols[0]
+                        if row_name in df.index:
+                            val = df.loc[row_name, col]
+                            if isinstance(val, pd.Series):
+                                val = val.iloc[0]
+                        elif label == "Total Cash":
+                            # Fallback for Total Cash
+                            for fallback in ["Cash And Cash Equivalents", "Cash Financial"]:
+                                if fallback in df.index:
+                                    val = df.loc[fallback, col]
+                                    if isinstance(val, pd.Series):
+                                        val = val.iloc[0]
+                                    break
+                row_vals[d.strftime('%Y-%m-%d') if hasattr(d, 'strftime') else str(d)] = val
+            data[label] = row_vals
+            
+        df_result = pd.DataFrame(data).T
+        return df_result
+    except:
+        return None
+
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try: requests.post(url, json={"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"})
@@ -196,33 +270,78 @@ with tab_analyzer:
 
                     # ☠️ მარტინ შკრელის ეჭვების რადარი (Skepticism Radar)
                     st.markdown("### ☠️ Skepticism & Fraud Radar (შკრელის მეთოდოლოგია)")
-                    with st.markdown("<div class='skeptic-box'>", unsafe_allow_html=True):
-                        sk_c1, sk_c2, sk_c3 = st.columns(3)
+                    
+                    emp = info.get('fullTimeEmployees', 0)
+                    rev = info.get('totalRevenue', 0)
+                    z_val = calculate_z_score(info)
+                    
+                    # Triggers
+                    emp_danger = (emp is None or emp == 0 or emp < 10)
+                    rev_danger = (rev is None or rev == 0)
+                    z_danger = (z_val is not None and z_val != 0 and z_val < 1.81)
+                    z_na = (z_val is None or z_val == 0)
+                    
+                    # Define individual box styles and classes
+                    if emp_danger:
+                        emp_desc = f"{emp or 0} თანამშრომელი (ცარიელი კონტორა)"
+                        emp_style = "background-color: #1c1010; border: 1px solid #6b2121;"
+                        emp_class = "signal-red"
+                    else:
+                        emp_desc = f"{emp} თანამშრომელი"
+                        emp_style = "background-color: #0c1810; border: 1px solid #1b4d22;"
+                        emp_class = "signal-green"
                         
-                        # ფილტრი 1: თანამშრომლების კრიტიკული რაოდენობა
-                        emp = info.get('fullTimeEmployees', 0)
-                        if emp == 0 or emp is None:
-                            sk_c1.markdown(f"👥 **თანამშრომლები:** <span class='signal-red'>არ იძებნება (საეჭვოა)</span>", unsafe_allow_html=True)
-                        elif emp < 10:
-                            sk_c1.markdown(f"👥 **თანამშრომლები:** <span class='signal-red'>{emp} კაცი (ცარიელი 'კონტორა')</span>", unsafe_allow_html=True)
-                        else:
-                            sk_c1.markdown(f"👥 **თანამშრომლები:** <span class='signal-green'>{emp} თანამშრომელი</span>", unsafe_allow_html=True)
-                        # ფილტრი 2: პროდუქტი და რეალური შემოსავალი
-                        rev = info.get('totalRevenue', 0)
-                        if rev == 0 or rev is None:
-                            sk_c2.markdown(f"💰 **რეალური გაყიდვები:** <span class='signal-red'>$0 (პროდუქტი არ აქვთ)</span>", unsafe_allow_html=True)
-                        else:
-                            sk_c2.markdown(f"💰 **რეალური გაყიდვები:** <span class='signal-green'>{fmt_m(rev)}</span>", unsafe_allow_html=True)
-                            
-                        # ფილტრი 3: გაკოტრების და დილუაციის რისკი (Altman Z-Score)
-                        z_val = calculate_z_score(info)
-                        if z_val == 0:
-                            sk_c3.markdown(f"🛡️ **Altman Z-Score:** <span class='signal-amber'>N/A (მონაცემები არასრულია)</span>", unsafe_allow_html=True)
-                        elif z_val < 1.81:
-                            sk_c3.markdown(f"🛡️ **Altman Z-Score:** <span class='signal-red'>{z_val} (გაკოტრების/დილუაციის რისკი)</span>", unsafe_allow_html=True)
-                        else:
-                            sk_c3.markdown(f"🛡️ **Altman Z-Score:** <span class='signal-green'>{z_val} (სტაბილურია)</span>", unsafe_allow_html=True)
-                    st.markdown("</div>", unsafe_allow_html=True)
+                    if rev_danger:
+                        rev_desc = "$0 (პროდუქტი არ აქვთ)"
+                        rev_style = "background-color: #1c1010; border: 1px solid #6b2121;"
+                        rev_class = "signal-red"
+                    else:
+                        rev_desc = fmt_m(rev)
+                        rev_style = "background-color: #0c1810; border: 1px solid #1b4d22;"
+                        rev_class = "signal-green"
+                        
+                    if z_na:
+                        z_desc = "N/A (არასრული მონაცემები)"
+                        z_style = "background-color: #1a160c; border: 1px solid #6b5321;"
+                        z_class = "signal-amber"
+                    elif z_danger:
+                        z_desc = f"{z_val} (გაკოტრების/დილუაციის რისკი)"
+                        z_style = "background-color: #1c1010; border: 1px solid #6b2121;"
+                        z_class = "signal-red"
+                    else:
+                        z_desc = f"{z_val} (სტაბილურია)"
+                        z_style = "background-color: #0c1810; border: 1px solid #1b4d22;"
+                        z_class = "signal-green"
+                    
+                    # Layout
+                    sk_c1, sk_c2, sk_c3 = st.columns(3)
+                    sk_c1.markdown(f"""
+                        <div style="{emp_style} border-radius: 8px; padding: 20px; text-align: center; min-height: 120px;">
+                            <div style="font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px;">👥 თანამშრომლები / Employees</div>
+                            <div class="{emp_class}" style="font-size: 16px; font-weight: bold; margin-top: 10px;">{emp_desc}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    sk_c2.markdown(f"""
+                        <div style="{rev_style} border-radius: 8px; padding: 20px; text-align: center; min-height: 120px;">
+                            <div style="font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px;">💰 რეალური გაყიდვები / Revenue</div>
+                            <div class="{rev_class}" style="font-size: 16px; font-weight: bold; margin-top: 10px;">{rev_desc}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    sk_c3.markdown(f"""
+                        <div style="{z_style} border-radius: 8px; padding: 20px; text-align: center; min-height: 120px;">
+                            <div style="font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px;">🛡️ Altman Z-Score</div>
+                            <div class="{z_class}" style="font-size: 16px; font-weight: bold; margin-top: 10px;">{z_desc}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if emp_danger or rev_danger or z_danger:
+                        st.markdown(f"""
+                            <div style="background-color: #2a1b1b; border: 1px solid #7a2222; border-radius: 6px; padding: 12px; margin-top: 15px; margin-bottom: 15px;">
+                                <span class="signal-red" style="font-size: 14px;">⚠️ <b>შკრელის მეთოდოლოგიის გაფრთხილება:</b> აღმოჩენილია პოტენციური ფინანსური ან ოპერაციული რისკი!</span>
+                            </div>
+                        """, unsafe_allow_html=True)
 
                     # ძირითადი ფინანსური მეტრიკები
                     st.markdown("### 📊 ძირითადი ფინანსური კოეფიციენტები")
@@ -231,6 +350,20 @@ with tab_analyzer:
                     m_c2.markdown(f"<div class='metric-box'><div class='metric-box-title'>Price-to-Sales (P/S)</div><div class='metric-box-value'>{info.get('priceToSalesTrailing12Months', 'N/A')}</div></div>", unsafe_allow_html=True)
                     m_c3.markdown(f"<div class='metric-box'><div class='metric-box-title'>Total Cash</div><div class='metric-box-value'>{fmt_m(info.get('totalCash'))}</div></div>", unsafe_allow_html=True)
                     m_c4.markdown(f"<div class='metric-box'><div class='metric-box-title'>Short % of Float</div><div class='metric-box-value'>{fmt_pct(info.get('shortPercentOfFloat'))}</div></div>", unsafe_allow_html=True)
+
+                    # 📅 Multi-Year Financial Matrix (Roaring Kitty Style)
+                    st.markdown("---")
+                    st.markdown("### 📅 Multi-Year Financial Matrix (Roaring Kitty Style)")
+                    with st.spinner("ფინანსური ისტორიის სინქრონიზაცია..."):
+                        fin_matrix = fetch_multi_year_financial_matrix(stock)
+                        if fin_matrix is not None and not fin_matrix.empty:
+                            if hasattr(fin_matrix, 'map'):
+                                formatted_matrix = fin_matrix.map(fmt_financial_val)
+                            else:
+                                formatted_matrix = fin_matrix.applymap(fmt_financial_val)
+                            st.table(formatted_matrix)
+                        else:
+                            st.info("ფინანსური ისტორიის მონაცემები ვერ მოიძებნა ამ ტიკერისთვის.")
 
                     # გაფართოებული ჩარტების სექცია
                     st.markdown("---")
@@ -260,11 +393,56 @@ with tab_whales:
         try:
             holders = yf.Ticker(ticker).institutional_holders
             if holders is not None and not holders.empty:
-                # ვასუფთავებთ ცხრილს
-                holders.columns = ["ინსტიტუტი", "აქციები", "თარიღი", "წილი %", "ღირებულება"]
-                st.dataframe(holders, width="stretch")
+                # Safe column cleaning and mapping
+                columns_to_keep = {
+                    'Holder': 'ინსტიტუტი',
+                    'Shares': 'აქციები',
+                    'Date Reported': 'თარიღი',
+                    'pctHeld': 'წილი %',
+                    'Value': 'ღირებულება'
+                }
+                existing_cols = [c for c in columns_to_keep.keys() if c in holders.columns]
+                holders_cleaned = holders[existing_cols].rename(columns=columns_to_keep)
+                
+                # Analytics metrics calculations
+                total_shares = holders_cleaned["აქციები"].sum() if "აქციები" in holders_cleaned.columns else 0
+                total_value = holders_cleaned["ღირებულება"].sum() if "ღირებულება" in holders_cleaned.columns else 0
+                
+                st.markdown("#### 📊 მსხვილი მფლობელების ანალიტიკა / Whales Analytics")
+                c_an1, c_an2, c_an3 = st.columns(3)
+                
+                if "ღირებულება" in holders_cleaned.columns:
+                    c_an1.markdown(f"<div class='metric-box'><div class='metric-box-title'>ჯამური ღირებულება / Total Value</div><div class='metric-box-value'>{fmt_financial_val(total_value)}</div></div>", unsafe_allow_html=True)
+                if "აქციები" in holders_cleaned.columns:
+                    c_an2.markdown(f"<div class='metric-box'><div class='metric-box-title'>ჯამური აქციები / Total Shares</div><div class='metric-box-value'>{total_shares:,}</div></div>", unsafe_allow_html=True)
+                if not holders_cleaned.empty and "ინსტიტუტი" in holders_cleaned.columns:
+                    top_holder = holders_cleaned.iloc[0]["ინსტიტუტი"]
+                    top_pct = holders_cleaned.iloc[0]["წილი %"] if "წილი %" in holders_cleaned.columns else None
+                    pct_str = fmt_pct(top_pct) if top_pct is not None else "N/A"
+                    c_an3.markdown(f"<div class='metric-box'><div class='metric-box-title'>უმსხვილესი ინვესტორი / Top Whale</div><div class='metric-box-value' style='font-size: 14px;'>{top_holder}<br><span style='color: #2ea44f;'>({pct_str})</span></div></div>", unsafe_allow_html=True)
+                
+                st.markdown("##### 📁 დეტალური ცხრილი / Detailed Holders Table")
+                st.dataframe(holders_cleaned, use_container_width=True)
             else: st.info("მონაცემები მსხვილი ინვესტორების შესახებ ვერ მოიძებნა.")
         except: st.error("ინფორმაციის წაკითხვა ვერ მოხერხდა.")
+        
+        # Placeholder for Network Sentiments
+        st.markdown("---")
+        st.markdown("### 🕸️ Analyst/Fund Network Sentiments")
+        st.caption("ფონდების და ანალიტიკოსების ქსელური სენტიმენტები (ამჟამად დამუშავების პროცესშია)")
+        st.markdown("""
+            <div style="background-color: #12161f; border: 1px solid #21262d; border-radius: 8px; padding: 20px;">
+                <h5 style="color: #58a6ff; margin: 0 0 10px 0;">🎙️ სოციალური და ქსელური რადარი (Value Investors Sentiment Tracker)</h5>
+                <p style="font-size: 14px; color: #8b949e; margin-bottom: 15px;">
+                    მალე: აქ გამოჩნდება Twitter/X, Substack და ცნობილი Value ინვესტორების (Mohnish Pabrai, Guy Spier, Li Lu და სხვები) აზრები და პოზიციები ამ აქტივზე.
+                </p>
+                <div style="display: flex; gap: 10px;">
+                    <span style="background-color: #21262d; color: #8b949e; padding: 4px 10px; border-radius: 12px; font-size: 12px;">📊 Wall Street Consensus: N/A</span>
+                    <span style="background-color: #21262d; color: #8b949e; padding: 4px 10px; border-radius: 12px; font-size: 12px;">💬 Social Volume: Low</span>
+                    <span style="background-color: #21262d; color: #8b949e; padding: 4px 10px; border-radius: 12px; font-size: 12px;">📈 Value Investor Sentiment: Neutral</span>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
 # ----------------- ჩანართი 4: დღიურის არქივი -----------------
 with tab_journal:
