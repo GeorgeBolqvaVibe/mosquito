@@ -6,7 +6,7 @@ import time
 import threading
 from supabase import create_client, Client
 
-# --- 1. ბექენდის კონფიგურაცია (SUPABASE INTEGRATION) ---
+# --- 1. ბექენდის კონფიგურაცია ---
 SUPABASE_URL = "https://gvgszdnnfbbyyvnyvnwu.supabase.co" 
 SUPABASE_KEY = "sb_publishable_QS9xHLeep1KjOwz_137QGA_d2DYKku-"
 
@@ -14,7 +14,6 @@ TELEGRAM_TOKEN = "8787917755:AAFtwhMzhELVX2zoSwNv36D5xiME-5KE73w"
 CHAT_ID = "5814652490"
 SENT_ALERTS_FILE = "sent_alerts.txt"
 
-# ინიციალიზაცია
 @st.cache_resource
 def init_supabase():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -23,17 +22,8 @@ supabase = init_supabase()
 
 st.set_page_config(page_title="Deep-Value Pro", layout="wide")
 
-# --- სესიის მართვა (რომ რეფრეშზე არ ამოაგდოს) ---
 if "user" not in st.session_state:
     st.session_state.user = None
-
-# ვცდილობთ აღვადგინოთ არსებული ლოკალური სესია Supabase-დან
-try:
-    session = supabase.auth.get_session()
-    if session and session.user:
-        st.session_state.user = session.user
-except:
-    pass
 
 # --- 2. დამხმარე ფინანსური ფუნქციები ---
 def fmt_m(val):
@@ -76,9 +66,8 @@ def is_already_sent(alert_id):
 def mark_as_sent(alert_id):
     with open(SENT_ALERTS_FILE, "a") as f: f.write(f"{alert_id}\n")
 
-# --- 3. 🤖 გლობალური ფონური მზვერავი (SUPABASE ENGINE) ---
+# --- 3. 🤖 გლობალური ფონური მზვერავი ---
 def background_monitor_loop():
-    print("🚀 გლობალური ფონური ბოტი აქტიურია (Supabase რეჟიმი)")
     while True:
         try:
             res = supabase.table("watchlist").select("ticker").execute()
@@ -99,9 +88,8 @@ def background_monitor_loop():
                                 send_telegram_message(f"📰 *ახალი სიახლე:* #{ticker}\n\n📌 {title}\n📰 წყარო: {publisher}\n🔗 [წაიკითხე ორიგინალი]({link})")
                                 mark_as_sent(news_id)
                                 time.sleep(1)
-        except Exception as e:
-            print(f"შეცდომა ბოტის ციკლში: {e}")
-        time.sleep(3600) # 1 საათში ერთხელ შემოწმება
+        except: pass
+        time.sleep(3600)
 
 @st.cache_resource
 def start_global_monitor():
@@ -111,40 +99,27 @@ def start_global_monitor():
 
 start_global_monitor()
 
-# --- 4. 🔑 USER AUTHENTICATION SYSTEM (პროფილები) ---
+# --- 4. 🔑 USER AUTHENTICATION SYSTEM (FAST ACCESS) ---
 st.sidebar.title("👤 კიტის ლაბორატორია")
 
 if st.session_state.user is None:
-    auth_mode = st.sidebar.radio("ავტორიზაცია:", ["Sign In", "Sign Up"])
-    email = st.sidebar.text_input("ელ-ფოსტა:")
-    password = st.sidebar.text_input("პაროლი:", type="password")
-    
-    if auth_mode == "Sign Up":
-        if st.sidebar.button("🚀 რეგისტრაცია"):
-            try:
-                res = supabase.auth.sign_up({"email": email, "password": password})
-                st.sidebar.success("🎉 რეგისტრაცია წარმატებულია! გადადი Sign In-ზე.")
-            except Exception as e: st.sidebar.error(f"შეცდომა: {e}")
-    else:
-        if st.sidebar.button("🔐 შესვლა"):
-            try:
-                res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                st.session_state.user = res.user
-                st.rerun()
-            except Exception as e: st.sidebar.error("❌ არასწორი მეილი ან პაროლი.")
-            
-    st.info("👋 გთხოვთ გაიაროთ ავტორიზაცია გვერდითა მენიუში, რომ გახსნათ თქვენი პირადი პორტფოლიო და რადარი.")
+    st.sidebar.info("🤖 Rate Limit-ის ასარიდებლად ჩართულია სწრაფი ანონიმური შესვლა.")
+    if st.sidebar.button("🚀 ლაბორატორიაში შესვლა"):
+        try:
+            res = supabase.auth.sign_in_anonymously()
+            st.session_state.user = res.user
+            st.rerun()
+        except Exception as e: 
+            st.sidebar.error(f"შეცდომა: {e}. დარწმუნდით რომ Supabase-ში Anonymous ჩართულია.")
     st.stop()
 
-# თუ იუზერი წარმატებით შევიდა
 user_id = st.session_state.user.id
-st.sidebar.success(f"🤝 მოგესალმები: {st.session_state.user.email}")
+st.sidebar.success("🤝 ავტორიზებული ხარ როგორც ექსპერტი!")
 if st.sidebar.button("🚪 გამოსვლა"):
-    supabase.auth.sign_out()
     st.session_state.user = None
     st.rerun()
 
-# --- 5. 🖥️ MAIN APPLICATION INTERFACE (4 TABS) ---
+# --- 5. 🖥️ MAIN APPLICATION INTERFACE ---
 tab_analyzer, tab_sectors, tab_radar, tab_journal = st.tabs([
     "🕵️‍♂️ Individual Stock Analyzer", 
     "📊 Market Sector Rotation", 
@@ -170,15 +145,14 @@ with tab_analyzer:
                         if st.button(f"➕ Add {ticker} to Watchlist"):
                             try:
                                 supabase.table("watchlist").insert({"user_id": user_id, "ticker": ticker}).execute()
-                                # მომენტალური შეტყობინება ტელეგრამზე და ეკრანზე
-                                send_telegram_message(f"📌 *ახალი სტოკი ვოჩლისტში!* \n🎫 ტიკერი: #{ticker}\n👤 მომხმარებელი: {st.session_state.user.email}")
+                                send_telegram_message(f"📌 *ახალი სტოკი ვოჩლისტში!* \n🎫 ტიკერი: #{ticker}")
                                 st.success(f"{ticker} დაემატა ბაზაში!")
-                                time.sleep(1)
-                                st.rerun() # აიძულებს გვერდს განახლდეს და დაინახოს ცვლილება
-                            except Exception as e: 
+                                time.sleep(0.5)
+                                st.rerun()
+                            except: 
                                 st.info(f"{ticker} უკვე სათვალთვალო სიაშია.")
 
-                    st.markdown("#### 🔗 გარე კვლევის მალსახმობები (Shortcuts):")
+                    st.markdown("#### 🔗 გარე კვლევის მალსახმობები:")
                     c1, c2, c3, c4, c5 = st.columns(5)
                     c1.link_button("📄 SEC Edgar", f"https://www.sec.gov/edgar/browse/?CIK={ticker}", use_container_width=True)
                     c2.link_button("💼 OpenInsider", f"https://openinsider.com/search?q={ticker}", use_container_width=True)
@@ -211,10 +185,7 @@ with tab_analyzer:
 # ----------------- ჩანართი 2: სექტორები -----------------
 with tab_sectors:
     st.header("📊 ამერიკული ბაზრის სექტორული როტაცია")
-    sectors_dict = {
-        "Technology": "XLK", "Financials": "XLF", "Energy": "XLE", "Healthcare": "XLV",
-        "Industrials": "XLI", "Consumer Discretionary": "XLY", "Consumer Staples": "XLP"
-    }
+    sectors_dict = {"Technology": "XLK", "Financials": "XLF", "Energy": "XLE", "Healthcare": "XLV"}
     if st.button("🔄 სექტორების სკანირება"):
         sector_data = []
         for name, etf in sectors_dict.items():
@@ -225,13 +196,12 @@ with tab_sectors:
             except: pass
         if sector_data:
             df = pd.DataFrame(sector_data).sort_values(by="ბოლო 3 თვის ტრენდი", ascending=False)
-            df['ბოლო 3 თვის ტრენდი'] = df['ბოლო 3 თვის ტრენდი'].apply(lambda x: f"{x:+.2f}%")
             st.dataframe(df, width="stretch")
 
 # ----------------- ჩანართი 3: რადარი -----------------
 with tab_radar:
     st.header("🎯 Deep Value რადარი (Inverted Engine)")
-    default_universe = ["POET", "META", "GME", "BABA", "INTC", "WBD", "KSS", "F"]
+    default_universe = ["POET", "META", "GME", "BABA"]
     universe_input = st.text_area("🎫 საძიებო აქციები:", value=", ".join(default_universe))
     tickers_to_scan = [t.strip().upper() for t in universe_input.split(",") if t.strip()]
     
@@ -241,58 +211,48 @@ with tab_radar:
             try:
                 inf = yf.Ticker(tok).info
                 pb = inf.get('priceToBook', 0)
-                short_float = inf.get('shortPercentOfFloat', 0)
                 book_to_price = (1 / pb) if (pb and pb > 0) else 0
                 radar_results.append({
                     "🎫 ტიკერი": tok, "🏢 კომპანია": inf.get('longName'),
-                    "📈 Book / Price (B/P)": book_to_price, "🛡️ Altman Z-Score": calculate_crude_z_score(inf),
-                    "🦊 Short % of Float": short_float if short_float else 0
+                    "📈 Book / Price (B/P)": book_to_price, "🛡️ Altman Z-Score": calculate_crude_z_score(inf)
                 })
             except: pass
         if radar_results:
             df_radar = pd.DataFrame(radar_results).sort_values(by="📈 Book / Price (B/P)", ascending=False)
-            st.dataframe(df_radar.style.format({"📈 Book / Price (B/P)": "{:.3f}", "🦊 Short % of Float": "{:.2%}"}), width="stretch")
+            st.dataframe(df_radar, width="stretch")
 
-# ----------------- ჩანართი 4: KITTY'S JOURNAL & PORTFOLIO -----------------
+# ----------------- ჩანართი 4: KITTY'S JOURNAL -----------------
 with tab_journal:
     st.header("📓 პირადი საინვესტიციო დღიური და პორტფოლიო")
-    
     with st.form("journal_form"):
         j_ticker = st.text_input("🎫 აქციის ტიკერი (მაგ. GME):").upper()
         j_confidence = st.slider("🎯 Confidence Score:", 1, 6, 3)
-        j_tags = st.multiselect("🏷️ თეზისის თეგები:", ["Deep Value", "Turnaround", "High Short Float", "Insider Cluster", "Asymmetric Risk"])
         j_notes = st.text_area("📝 შენი ანალიტიკური ჩანაწერები (Notes):")
-        
         if st.form_submit_button("💾 ჩანაწერის ბაზაში შენახვა"):
             if j_ticker:
                 try:
                     supabase.table("kitty_journal").upsert({
                         "user_id": user_id, "ticker": j_ticker,
-                        "confidence_score": j_confidence, "thesis_tags": j_tags, "notes": j_notes
+                        "confidence_score": j_confidence, "notes": j_notes
                     }).execute()
                     st.success(f"📓 თეზისი #{j_ticker}-ზე შენახულია!")
-                    time.sleep(1)
+                    time.sleep(0.5)
                     st.rerun()
-                except Exception as e: st.error(f"შეცდომა შენახვისას: {e}")
-            else: st.error("გთხოვთ მიუთითოთ ტიკერი.")
+                except Exception as e: st.error(f"შეცდომა: {e}")
 
     st.markdown("---")
-    st.subheader("📋 შენი მიმდინარე პორტფოლიო და დღიურის ჩანაწერები:")
+    st.subheader("📋 შენი მიმდინარე ჩანაწერები:")
     try:
         journal_res = supabase.table("kitty_journal").select("*").eq("user_id", user_id).execute()
         if journal_res.data:
-            df_j = pd.DataFrame(journal_res.data)
-            st.dataframe(df_j[["ticker", "confidence_score", "thesis_tags", "notes", "created_at"]], width="stretch")
-        else: st.info("შენი დღიური ჯერ ცარიელია.")
-    except Exception as e: st.error(f"მონაცემების წაკითხვის შეცდომა: {e}")
+            st.dataframe(pd.DataFrame(journal_res.data)[["ticker", "confidence_score", "notes", "created_at"]], width="stretch")
+    except: pass
 
-# ვოჩლისტი საიდბარში (Supabase) - ახლა უკვე ყოველთვის აფდეითდება რეალურ დროში
+# ვოჩლისტი საიდბარში
 st.sidebar.markdown("---")
 st.sidebar.subheader("📋 შენი Watchlist (Cloud):")
 try:
     watch_res = supabase.table("watchlist").select("ticker").eq("user_id", user_id).execute()
     if watch_res.data:
         for item in watch_res.data: st.sidebar.text(f"• {item['ticker']}")
-    else: st.sidebar.text("სია ცარიელია")
-except: 
-    st.sidebar.text("ბაზასთან კავშირი...")
+except: pass
