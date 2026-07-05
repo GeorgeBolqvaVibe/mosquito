@@ -21,46 +21,205 @@ def init_supabase():
 
 supabase = init_supabase()
 
-st.set_page_config(page_title="Kitty Deep-Value Terminal v3", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Kitty Deep-Value Terminal v4.0", layout="wide", initial_sidebar_state="expanded")
 
 # Bloomberg / TradingView Premium Dark UI Style
 st.markdown("""
     <style>
-        .stApp { background-color: #0b0e14; color: #c9d1d9; }
-        h1, h2, h3, h4 { color: #58a6ff !important; font-family: 'Courier New', monospace; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        .stApp {
+            background-color: #090d16;
+            color: #c9d1d9;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        
+        h1, h2, h3, h4, h5 {
+            color: #ffffff !important;
+            font-family: 'Inter', system-ui, sans-serif !important;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+        }
+
+        /* Ticker Header Node Style */
+        .ticker-header {
+            background: linear-gradient(135deg, #111625 0%, #161b2c 100%);
+            border: 1px solid #222735;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
         
         /* შეხსენების ბანერი დღიურიდან */
         .journal-alert {
-            background-color: #1c1f26;
-            border-left: 6px solid #d29922;
+            background-color: #1c1810;
+            border: 1px solid #ffb74d;
+            border-left: 4px solid #ffb74d;
             padding: 20px;
-            border-radius: 6px;
+            border-radius: 8px;
             margin-bottom: 25px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }
         
         /* ფინანსური ტერმინალის ბარათები */
         .metric-box {
-            background-color: #12161f;
-            border: 1px solid #21262d;
-            border-radius: 6px;
-            padding: 15px;
+            background-color: #111625;
+            border: 1px solid #222735;
+            border-radius: 8px;
+            padding: 18px;
             text-align: center;
+            transition: all 0.2s ease-in-out;
         }
-        .metric-box-title { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
-        .metric-box-value { font-size: 22px; font-weight: bold; color: #f0f6fc; margin-top: 5px; }
+        .metric-box:hover {
+            border-color: #3b4257;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .metric-box-title {
+            font-size: 11px;
+            color: #8b949e;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            font-weight: 500;
+        }
+        .metric-box-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-top: 6px;
+            font-family: 'Courier New', monospace;
+        }
         
-        /* შკრელის ეჭვების რადარის ბარათი */
-        .skeptic-box {
-            background-color: #1f1515;
-            border: 1px solid #482323;
+        /* შკრელის ეჭვების რადარის ბარათები */
+        .skeptic-card-danger {
+            background-color: #1a0f0f;
+            border: 1px solid #ef5350;
             border-radius: 8px;
             padding: 20px;
-            margin-bottom: 20px;
+            text-align: center;
+            min-height: 120px;
+            box-shadow: 0 0 10px rgba(239, 83, 80, 0.05);
         }
-        .signal-red { color: #f85149 !important; font-weight: bold; }
-        .signal-green { color: #2ea44f !important; font-weight: bold; }
-        .signal-amber { color: #d29922 !important; font-weight: bold; }
+        .skeptic-card-safe {
+            background-color: #0c1512;
+            border: 1px solid #26a69a;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            min-height: 120px;
+            box-shadow: 0 0 10px rgba(38, 166, 154, 0.05);
+        }
+        .skeptic-card-warning {
+            background-color: #18130e;
+            border: 1px solid #ffb74d;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            min-height: 120px;
+            box-shadow: 0 0 10px rgba(255, 183, 77, 0.05);
+        }
+        
+        .signal-red { color: #ef5350 !important; font-weight: 600; }
+        .signal-green { color: #26a69a !important; font-weight: 600; }
+        .signal-amber { color: #ffb74d !important; font-weight: 600; }
+
+        /* Modern Matrix & Tables styling */
+        table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            font-family: 'Inter', system-ui, sans-serif !important;
+            background-color: #111625 !important;
+            border-radius: 8px !important;
+            overflow: hidden !important;
+            border: 1px solid #222735 !important;
+        }
+        th {
+            background-color: #161b2c !important;
+            color: #8b949e !important;
+            font-weight: 600 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.8px !important;
+            font-size: 11px !important;
+            padding: 12px 16px !important;
+            border-bottom: 1px solid #222735 !important;
+            text-align: left !important;
+        }
+        td {
+            padding: 12px 16px !important;
+            border-bottom: 1px solid #222735 !important;
+            color: #ffffff !important;
+            font-family: 'Courier New', monospace !important;
+            font-size: 14px !important;
+            text-align: left !important;
+        }
+        tr:nth-child(even) {
+            background-color: #161b2c !important;
+        }
+        tr:hover {
+            background-color: #1e2439 !important;
+        }
+
+        /* Sidebar Styling */
+        [data-testid="stSidebar"] {
+            background-color: #090d16 !important;
+            border-right: 1px solid #222735 !important;
+        }
+        [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
+            color: #ffffff !important;
+            font-family: 'Inter', system-ui, sans-serif !important;
+        }
+
+        /* Input Fields Styling */
+        div[data-baseweb="input"] {
+            background-color: #111625 !important;
+            border: 1px solid #222735 !important;
+            border-radius: 8px !important;
+            transition: all 0.2s ease-in-out !important;
+        }
+        div[data-baseweb="input"]:focus-within {
+            border-color: #58a6ff !important;
+            box-shadow: 0 0 0 1px #58a6ff !important;
+        }
+        input {
+            color: #ffffff !important;
+            font-family: 'Inter', system-ui, sans-serif !important;
+        }
+        textarea {
+            color: #ffffff !important;
+            background-color: #111625 !important;
+            border: 1px solid #222735 !important;
+            border-radius: 8px !important;
+        }
+
+        /* Buttons Styling */
+        button[kind="secondary"] {
+            background-color: #111625 !important;
+            border: 1px solid #222735 !important;
+            border-radius: 8px !important;
+            color: #ffffff !important;
+            font-weight: 500 !important;
+            transition: all 0.2s ease-in-out !important;
+        }
+        button[kind="secondary"]:hover {
+            border-color: #58a6ff !important;
+            background-color: #161b2c !important;
+            color: #58a6ff !important;
+            box-shadow: 0 0 10px rgba(88, 166, 255, 0.1);
+        }
+
+        /* Tabs Styling */
+        button[role="tab"] {
+            font-family: 'Inter', system-ui, sans-serif !important;
+            color: #8b949e !important;
+            font-size: 14px !important;
+            font-weight: 500 !important;
+            background-color: transparent !important;
+            border: none !important;
+        }
+        button[role="tab"][aria-selected="true"] {
+            color: #ffffff !important;
+            border-bottom: 2px solid #58a6ff !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -207,7 +366,7 @@ def start_global_monitor():
 start_global_monitor()
 
 # --- 4. ინტერფეისის სტრუქტურა ---
-st.sidebar.title("🦁 Kitty Terminal v3.0")
+st.sidebar.title("🦁 Kitty Terminal v4.0")
 ticker = st.sidebar.text_input("🚀 შეიყვანე აქციის ტიკერი:", "POET").upper()
 
 tab_analyzer, tab_insiders, tab_whales, tab_journal = st.tabs([
@@ -233,7 +392,7 @@ with tab_analyzer:
                             latest_note = j_check.data[-1]
                             st.markdown(f"""
                                 <div class="journal-alert">
-                                    <h4 style="margin:0; color:#d29922;">⚠️ ჩანაწერი ნაპოვნია შენს პირად დღიურში!</h4>
+                                    <h4 style="margin:0; color:#ffb74d;">⚠️ ჩანაწერი ნაპოვნია შენს პირად დღიურში!</h4>
                                     <p style="margin-top:8px; font-size:14px; color:#f0f6fc;"><b>შენი თეზისი:</b> {latest_note['notes']}</p>
                                     <small style="color:#8b949e;">🎯 Confidence Score: {latest_note['confidence_score']}/6</small>
                                 </div>
@@ -243,9 +402,16 @@ with tab_analyzer:
                     # ჰედერი და ვოჩლისტი
                     c_h, c_b = st.columns([4, 1])
                     with c_h:
-                        st.header(f"🏢 {info.get('longName')} ({ticker})")
-                        st.caption(f"📍 {info.get('sector')} | {info.get('industry')} | Employees: {info.get('fullTimeEmployees', 'N/A')}")
+                        st.markdown(f"""
+                            <div class="ticker-header">
+                                <h2 style="margin:0; font-size: 24px; color: #ffffff;">🏢 {info.get('longName')} ({ticker})</h2>
+                                <p style="margin: 8px 0 0 0; font-size: 13px; color: #8b949e;">
+                                    📍 {info.get('sector')} | {info.get('industry')} | Employees: {info.get('fullTimeEmployees', 'N/A')}
+                                </p>
+                            </div>
+                        """, unsafe_allow_html=True)
                     with c_b:
+                        st.write("")
                         st.write("")
                         if st.button("➕ Add to Watchlist", use_container_width=True):
                             try:
@@ -284,53 +450,53 @@ with tab_analyzer:
                     # Define individual box styles and classes
                     if emp_danger:
                         emp_desc = f"{emp or 0} თანამშრომელი (ცარიელი კონტორა)"
-                        emp_style = "background-color: #1c1010; border: 1px solid #6b2121;"
+                        emp_box_class = "skeptic-card-danger"
                         emp_class = "signal-red"
                     else:
                         emp_desc = f"{emp} თანამშრომელი"
-                        emp_style = "background-color: #0c1810; border: 1px solid #1b4d22;"
+                        emp_box_class = "skeptic-card-safe"
                         emp_class = "signal-green"
                         
                     if rev_danger:
                         rev_desc = "$0 (პროდუქტი არ აქვთ)"
-                        rev_style = "background-color: #1c1010; border: 1px solid #6b2121;"
+                        rev_box_class = "skeptic-card-danger"
                         rev_class = "signal-red"
                     else:
                         rev_desc = fmt_m(rev)
-                        rev_style = "background-color: #0c1810; border: 1px solid #1b4d22;"
+                        rev_box_class = "skeptic-card-safe"
                         rev_class = "signal-green"
                         
                     if z_na:
                         z_desc = "N/A (არასრული მონაცემები)"
-                        z_style = "background-color: #1a160c; border: 1px solid #6b5321;"
+                        z_box_class = "skeptic-card-warning"
                         z_class = "signal-amber"
                     elif z_danger:
                         z_desc = f"{z_val} (გაკოტრების/დილუაციის რისკი)"
-                        z_style = "background-color: #1c1010; border: 1px solid #6b2121;"
+                        z_box_class = "skeptic-card-danger"
                         z_class = "signal-red"
                     else:
                         z_desc = f"{z_val} (სტაბილურია)"
-                        z_style = "background-color: #0c1810; border: 1px solid #1b4d22;"
+                        z_box_class = "skeptic-card-safe"
                         z_class = "signal-green"
                     
                     # Layout
                     sk_c1, sk_c2, sk_c3 = st.columns(3)
                     sk_c1.markdown(f"""
-                        <div style="{emp_style} border-radius: 8px; padding: 20px; text-align: center; min-height: 120px;">
+                        <div class="{emp_box_class}">
                             <div style="font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px;">👥 თანამშრომლები / Employees</div>
                             <div class="{emp_class}" style="font-size: 16px; font-weight: bold; margin-top: 10px;">{emp_desc}</div>
                         </div>
                     """, unsafe_allow_html=True)
                     
                     sk_c2.markdown(f"""
-                        <div style="{rev_style} border-radius: 8px; padding: 20px; text-align: center; min-height: 120px;">
+                        <div class="{rev_box_class}">
                             <div style="font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px;">💰 რეალური გაყიდვები / Revenue</div>
                             <div class="{rev_class}" style="font-size: 16px; font-weight: bold; margin-top: 10px;">{rev_desc}</div>
                         </div>
                     """, unsafe_allow_html=True)
                     
                     sk_c3.markdown(f"""
-                        <div style="{z_style} border-radius: 8px; padding: 20px; text-align: center; min-height: 120px;">
+                        <div class="{z_box_class}">
                             <div style="font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px;">🛡️ Altman Z-Score</div>
                             <div class="{z_class}" style="font-size: 16px; font-weight: bold; margin-top: 10px;">{z_desc}</div>
                         </div>
@@ -338,7 +504,7 @@ with tab_analyzer:
                     
                     if emp_danger or rev_danger or z_danger:
                         st.markdown(f"""
-                            <div style="background-color: #2a1b1b; border: 1px solid #7a2222; border-radius: 6px; padding: 12px; margin-top: 15px; margin-bottom: 15px;">
+                            <div style="background-color: #1a0f0f; border: 1px solid #ef5350; border-radius: 8px; padding: 12px; margin-top: 15px; margin-bottom: 15px; box-shadow: 0 0 10px rgba(239, 83, 80, 0.05);">
                                 <span class="signal-red" style="font-size: 14px;">⚠️ <b>შკრელის მეთოდოლოგიის გაფრთხილება:</b> აღმოჩენილია პოტენციური ფინანსური ან ოპერაციული რისკი!</span>
                             </div>
                         """, unsafe_allow_html=True)
@@ -447,7 +613,7 @@ with tab_whales:
 # ----------------- ჩანართი 4: დღიურის არქივი -----------------
 with tab_journal:
     st.subheader("📓 საინვესტიციო თეზისების მართვის პანელი")
-    with st.form("journal_v3"):
+    with st.form("journal_v4"):
         j_ticker = st.text_input("🎫 აქციის სიმბოლო:").upper()
         j_confidence = st.slider("🎯 Confidence Score (1-6):", 1, 6, 3)
         j_notes = st.text_area("📝 ჩაწერე შენი ანალიზი, ეჭვები, ან 10-K რეპორტის მიგნებები:")
