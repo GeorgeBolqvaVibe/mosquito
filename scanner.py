@@ -204,10 +204,9 @@ with tab_analyzer:
                         if emp == 0 or emp is None:
                             sk_c1.markdown(f"👥 **თანამშრომლები:** <span class='signal-red'>არ იძებნება (საეჭვოა)</span>", unsafe_allow_html=True)
                         elif emp < 10:
-                            sk_c1.markdown(f"👥 **თანამშრომლები:** <span class='signal-red'>{emp} კაცი (ცარიელი "კონტორა")</span>", unsafe_allow_html=True)
+                            sk_c1.markdown(f"👥 **თანამშრომლები:** <span class='signal-red'>{emp} კაცი (ცარიელი 'კონტორა')</span>", unsafe_allow_html=True)
                         else:
                             sk_c1.markdown(f"👥 **თანამშრომლები:** <span class='signal-green'>{emp} თანამშრომელი</span>", unsafe_allow_html=True)
-                        
                         # ფილტრი 2: პროდუქტი და რეალური შემოსავალი
                         rev = info.get('totalRevenue', 0)
                         if rev == 0 or rev is None:
