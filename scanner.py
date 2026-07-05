@@ -13,7 +13,6 @@ SUPABASE_KEY = "sb_publishable_QS9xHLeep1KjOwz_137QGA_d2DYKku-"
 TELEGRAM_TOKEN = "8787917755:AAFtwhMzhELVX2zoSwNv36D5xiME-5KE73w"
 CHAT_ID = "5814652490"
 SENT_ALERTS_FILE = "sent_alerts.txt"
-FIXED_USER_ID = "00000000-0000-0000-0000-000000000001"
 
 @st.cache_resource
 def init_supabase():
@@ -22,6 +21,12 @@ def init_supabase():
 supabase = init_supabase()
 
 st.set_page_config(page_title="Deep-Value Pro", layout="wide")
+
+# --- სესიის მყარი შენარჩუნება (რეფრეშისგან დაცვა) ---
+if "logged_in_user_id" not in st.session_state:
+    st.session_state.logged_in_user_id = None
+if "logged_in_user_email" not in st.session_state:
+    st.session_state.logged_in_user_email = None
 
 # --- 2. დამხმარე ფინანსური ფუნქციები ---
 def fmt_m(val):
@@ -64,11 +69,10 @@ def is_already_sent(alert_id):
 def mark_as_sent(alert_id):
     with open(SENT_ALERTS_FILE, "a") as f: f.write(f"{alert_id}\n")
 
-# --- 3. 🤖 100%-ით ავტონომიური ფონური ბოტი (სერვერული რეჟიმი) ---
+# --- 3. 🤖 ავტომატური ფონური ბოტი ---
 def background_monitor_loop():
     while True:
         try:
-            # სუფთა მოთხოვნა ბაზიდან ყოველგვარი იუზერ კონტექსტის გარეშე
             res = supabase.table("watchlist").select("ticker").execute()
             if res.data:
                 watchlist = list(set([item['ticker'] for item in res.data]))
@@ -76,7 +80,6 @@ def background_monitor_loop():
                     stock = yf.Ticker(ticker)
                     news = stock.news
                     if news:
-                        # ვამოწმებთ ბოლო 5 სიახლეს
                         for single_news in reversed(news[:5]):
                             news_id = single_news.get('id')
                             content = single_news.get('content', {})
@@ -88,9 +91,8 @@ def background_monitor_loop():
                                 send_telegram_message(f"📰 *ახალი სიახლე:* #{ticker}\n\n📌 {title}\n📰 წყარო: {publisher}\n🔗 [წაიკითხე ორიგინალი]({link})")
                                 mark_as_sent(news_id)
                                 time.sleep(1)
-        except:
-            pass
-        time.sleep(1800) # ყოველ 30 წუთში ერთხელ სრულიად ავტომატურად
+        except: pass
+        time.sleep(1800)
 
 @st.cache_resource
 def start_global_monitor():
@@ -98,13 +100,48 @@ def start_global_monitor():
     t.start()
     return True
 
-# ვრთავთ ფონურ ძრავს სერვერზე
 start_global_monitor()
 
-# --- 4. 🖥️ ვიზუალური ინტერფეისი ---
-st.sidebar.title("🦁 Kitty's Command Center")
-st.sidebar.success("⚡ ავტომატური რადარი აქტიურია 24/7-ზე")
+# --- 4. 🔑 კლასიკური ავტორიზაციის პანელი საიდბარში ---
+st.sidebar.title("👤 კიტის ლაბორატორია")
 
+if st.session_state.logged_in_user_id is None:
+    auth_mode = st.sidebar.radio("რეჟიმი:", ["Sign In", "Sign Up"])
+    email = st.sidebar.text_input("ელ-ფოსტა:")
+    password = st.sidebar.text_input("პაროლი:", type="password")
+    
+    if auth_mode == "Sign Up":
+        if st.sidebar.button("🚀 რეგისტრაცია"):
+            try:
+                # ვიყენებთ სუფთა რეგისტრაციას. (დარწმუნდი რომ Supabase-ში Confirm Sign Up გამორთულია)
+                res = supabase.auth.sign_up({"email": email, "password": password})
+                st.sidebar.success("🎉 რეგისტრაცია წარმატებულია! გადადი Sign In-ზე.")
+            except Exception as e: 
+                st.sidebar.error(f"შეცდომა: {e}")
+    else:
+        if st.sidebar.button("🔐 შესვლა"):
+            try:
+                res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                # ვინახავთ მონაცემებს მყარ სესიაში, რომელიც რეფრეშზე არ იშლება
+                st.session_state.logged_in_user_id = res.user.id
+                st.session_state.logged_in_user_email = res.user.email
+                st.rerun()
+            except Exception as e: 
+                st.sidebar.error("❌ არასწორი მეილი ან პაროლი.")
+            
+    st.info("👋 გთხოვთ გაიაროთ ავტორიზაცია, რომ გახსნათ რადარი.")
+    st.stop()
+
+# თუ იუზერი წარმატებით შევიდა
+user_id = st.session_state.logged_in_user_id
+st.sidebar.success(f"🤝 მოგესალმები: {st.session_state.logged_in_user_email}")
+if st.sidebar.button("🚪 გამოსვლა"):
+    st.session_state.logged_in_user_id = None
+    st.session_state.logged_in_user_email = None
+    st.header("სესია დახურულია.")
+    st.rerun()
+
+# --- 5. 🖥️ მთავარი ინტერფეისი ---
 tab_analyzer, tab_sectors, tab_radar, tab_journal = st.tabs([
     "🕵️‍♂️ Individual Stock Analyzer", 
     "📊 Market Sector Rotation", 
@@ -129,8 +166,8 @@ with tab_analyzer:
                         st.write("")
                         if st.button(f"➕ Add {ticker} to Watchlist"):
                             try:
-                                supabase.table("watchlist").insert({"user_id": FIXED_USER_ID, "ticker": ticker}).execute()
-                                send_telegram_message(f"📌 *აქცია ჩაემატა რადარზე:* #{ticker}\n🤖 ფონური მონიტორინგი დაწყებულია.")
+                                supabase.table("watchlist").insert({"user_id": user_id, "ticker": ticker}).execute()
+                                send_telegram_message(f"📌 *ახალი აქცია ჩაემატა:* #{ticker}\n👤 იუზერი: {st.session_state.logged_in_user_email}")
                                 st.success(f"{ticker} დაემატა ბაზაში!")
                                 time.sleep(0.5)
                                 st.rerun()
@@ -217,7 +254,7 @@ with tab_journal:
             if j_ticker:
                 try:
                     supabase.table("kitty_journal").upsert({
-                        "user_id": FIXED_USER_ID, "ticker": j_ticker,
+                        "user_id": user_id, "ticker": j_ticker,
                         "confidence_score": j_confidence, "notes": j_notes
                     }).execute()
                     st.success(f"📓 თეზისი #{j_ticker}-ზე შენახულია!")
@@ -225,19 +262,11 @@ with tab_journal:
                     st.rerun()
                 except Exception as e: st.error(f"შეცდომა: {e}")
 
-    st.markdown("---")
-    st.subheader("📋 შენი მიმდინარე ჩანაწერები:")
-    try:
-        journal_res = supabase.table("kitty_journal").select("*").eq("user_id", FIXED_USER_ID).execute()
-        if journal_res.data:
-            st.dataframe(pd.DataFrame(journal_res.data)[["ticker", "confidence_score", "notes", "created_at"]], width="stretch")
-    except: pass
-
-# ვოჩლისტი საიდბარში (სრულიად მყარი)
+# ვოჩლისტი საიდბარში (მყარად გაფილტრული კონკრეტულ მომხმარებელზე)
 st.sidebar.markdown("---")
 st.sidebar.subheader("📋 შენი Watchlist (Cloud):")
 try:
-    watch_res = supabase.table("watchlist").select("ticker").execute()
+    watch_res = supabase.table("watchlist").select("ticker").eq("user_id", user_id).execute()
     if watch_res.data:
         unique_tickers = list(set([item['ticker'] for item in watch_res.data]))
         for t in unique_tickers: 
